@@ -1,0 +1,66 @@
+// The C++ code used to determine how many ways there are to write all the numbers from 1191 to 1257 as the sum of some combination of the squares from 2^2 to 8^2
+
+
+
+#include <iostream>
+#include <vector>
+#include <numeric>
+#include <algorithm>  // Needed for min_element and max_element
+using namespace std;
+
+const vector<int> squares = {4, 9, 16, 25, 36, 49, 64};
+const int required_terms = 34;
+
+long long total_combinations = 0;
+
+void backtrack(int index,
+               int remaining_sum,
+               int remaining_count) {
+    if (remaining_sum < 0 || remaining_count < 0) return;
+
+    if (remaining_count == 0) {
+        if (remaining_sum == 0) {
+            total_combinations++;
+        }
+        return;
+    }
+
+    if (index == squares.size()) return;
+
+    for (int count = 0; count <= remaining_count; ++count) {
+        int used_sum = count * squares[index];
+        backtrack(index + 1,
+                  remaining_sum - used_sum,
+                  remaining_count - count);
+    }
+}
+
+int main() {
+    const int start = 1191;
+    const int end = 1257;
+
+    // Compute min/max achievable sums
+    int min_square = *min_element(squares.begin(), squares.end());
+    int max_square = *max_element(squares.begin(), squares.end());
+    int min_possible_sum = required_terms * min_square;
+    int max_possible_sum = required_terms * max_square;
+
+    long long grand_total = 0;
+
+    cout << "Counting combinations from " << start << " to " << end << " (no usage constraints):\n\n";
+
+    for (int target = start; target <= end; ++target) {
+        if (target < min_possible_sum || target > max_possible_sum) {
+            cout << target << ": Out of range\n";
+            continue;
+        }
+
+        total_combinations = 0;
+        backtrack(0, target, required_terms);
+        cout << target << ": " << total_combinations << " valid combination(s)\n";
+        grand_total += total_combinations;
+    }
+
+    cout << "\nTotal combinations across all values: " << grand_total << "\n";
+    return 0;
+}
