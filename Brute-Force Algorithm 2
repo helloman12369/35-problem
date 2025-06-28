@@ -1,0 +1,245 @@
+#include <iostream>
+#include <vector>
+#include <map>
+#include <set>
+#include <algorithm>
+#include <numeric>
+#include <functional>
+#include <unordered_map>
+#include <unordered_set>
+
+using namespace std;
+
+const vector<int> square_values = {4,9,16,25,36,49,64};
+const map<int,int> max_counts = {{4,1},{9,4},{16,7},{25,12},{36,17},{49,11},{64,3}};
+
+map<int, vector<pair<int,int>>> build_sigma() {
+    map<int, vector<pair<int,int>>> sigma;
+    for (int s : square_values) {
+        vector<pair<int,int>> pairs;
+        for (int a = 1; a <= 35; ++a) {
+            int b = s - a;
+            if (b > a && b <= 35) {
+                pairs.emplace_back(a,b);
+            }
+        }
+        sigma[s] = pairs;
+    }
+    return sigma;
+}
+
+// Generate all 34-square combinations summing to target with constraints
+void generate_solutions(int target, int idx, int curr_sum, int curr_count,
+                        map<int,int>& comb, const vector<int>& squares,
+                        vector<map<int,int>>& results, const map<int,int>& max_counts)
+{
+    if (curr_count > 34 || curr_sum > target)
+        return;
+    if (idx == (int)squares.size()) {
+        if (curr_count == 34 && curr_sum == target)
+            results.push_back(comb);
+        return;
+    }
+    int s = squares[idx];
+    int max_c = max_counts.at(s);
+    for (int count = 0; count <= max_c; ++count) {
+        comb[s] = count;
+        generate_solutions(target, idx+1, curr_sum + s*count, curr_count + count, comb, squares, results, max_counts);
+    }
+    comb.erase(s);
+}
+
+// Check that no number appears more than twice in pairs
+bool valid_number_appearances(const vector<pair<int,int>>& pairs) {
+    unordered_map<int,int> counts;
+    for (auto [a,b] : pairs) {
+        counts[a]++;
+        counts[b]++;
+        if (counts[a] > 2 || counts[b] > 2)
+            return false;
+    }
+    return true;
+}
+
+// Try to form chain: ends have degree 1, others degree 2, visit all nodes
+bool can_form_chain(const vector<pair<int,int>>& pairs, vector<pair<int,int>>& chained_pairs) {
+    unordered_map<int, vector<int>> graph;
+    for (auto [a,b] : pairs) {
+        graph[a].push_back(b);
+        graph[b].push_back(a);
+    }
+    vector<int> ends;
+    for (auto& [node, adj] : graph) {
+        int deg = (int)adj.size();
+        if (deg == 1) ends.push_back(node);
+        else if (deg != 2) return false;
+    }
+    if (ends.size() != 2) return false;
+
+    vector<int> path;
+    unordered_set<int> visited;
+    function<void(int)> dfs = [&](int u) {
+        path.push_back(u);
+        visited.insert(u);
+        for (int w : graph[u]) {
+            if (visited.count(w) == 0)
+                dfs(w);
+        }
+    };
+    dfs(ends[0]);
+
+    if ((int)path.size() != (int)graph.size())
+        return false;
+
+    chained_pairs.clear();
+    for (int i=0; i+1<(int)path.size(); ++i) {
+        chained_pairs.emplace_back(path[i], path[i+1]);
+    }
+
+    // Check that chained pairs match original pairs (unordered)
+    set<set<int>> orig_sets, chain_sets;
+    for (auto& p : pairs) orig_sets.insert({p.first, p.second});
+    for (auto& p : chained_pairs) chain_sets.insert({p.first, p.second});
+    return orig_sets == chain_sets;
+}
+
+// Check if merged sequence satisfies consecutive sums are perfect squares
+bool is_square_sum_chain(const vector<pair<int,int>>& chained_pairs) {
+    if (chained_pairs.empty()) return false;
+    vector<int> seq;
+    seq.push_back(chained_pairs[0].first);
+    for (auto& [a,b] : chained_pairs) {
+        if (seq.back() == a) seq.push_back(b);
+        else if (seq.back() == b) seq.push_back(a);
+        else return false;
+    }
+
+    // Merge consecutive duplicates
+    vector<int> merged;
+    for (size_t i=0; i<seq.size();) {
+        if (i+1 < seq.size() && seq[i] == seq[i+1]) {
+            merged.push_back(seq[i]);
+            i += 2;
+        } else {
+            merged.push_back(seq[i]);
+            i++;
+        }
+    }
+
+    set<int> square_set(square_values.begin(), square_values.end());
+    for (size_t i=0; i+1 < merged.size(); ++i) {
+        if (square_set.count(merged[i] + merged[i+1]) == 0)
+            return false;
+    }
+    return true;
+}
+
+int main() {
+    auto sigma = build_sigma();
+    vector<int> squares = square_values;
+
+    for (int target = 1191; target <= 1257; ++target) {
+        cout << "=== Processing target = " << target << " ===\n";
+        vector<map<int,int>> solutions;
+        map<int,int> comb;
+        generate_solutions(target, 0, 0, 0, comb, squares, solutions, max_counts);
+        cout << "Found " << solutions.size() << " solutions.\n";
+
+        if (solutions.empty()) {
+            cout << "No 34-square solutions found for " << target << ".\n\n";
+            continue;
+        }
+
+        int total_valid_chains = 0;
+
+        for (size_t i=0; i < solutions.size(); ++i) {
+            auto& sol = solutions[i];
+            cout << "Solution " << i+1 << ": ";
+            for (auto& [s,c] : sol)
+                cout << s << "^(" << c << ") ";
+            cout << "\n";
+
+            // Prepare pair choices per square count
+            vector<vector<vector<pair<int,int>>>> pair_choices; // for each square: list of choices of pairs sets
+
+            bool skip_solution = false;
+            for (auto& [s,count] : sol) {
+                if (count > (int)sigma[s].size()) {
+                    cout << "  Skip: count " << count << " for square " << s
+                         << " exceeds available pairs " << sigma[s].size() << "\n";
+                    skip_solution = true;
+                    break;
+                }
+                // Generate all combinations of pairs from sigma[s] of size count
+                vector<vector<pair<int,int>>> combos;
+                vector<pair<int,int>> current;
+                function<void(int,int)> backtrack = [&](int start,int needed){
+                    if ((int)current.size() == needed){
+                        combos.push_back(current);
+                        return;
+                    }
+                    for (int idx=start; idx < (int)sigma[s].size(); ++idx){
+                        current.push_back(sigma[s][idx]);
+                        backtrack(idx+1, needed);
+                        current.pop_back();
+                    }
+                };
+                backtrack(0,count);
+                pair_choices.push_back(combos);
+            }
+            if (skip_solution) continue;
+
+            size_t total_combos = 1;
+            for (auto& pc : pair_choices)
+                total_combos *= pc.size();
+
+            cout << "  Trying " << total_combos << " pair assignment combos...\n";
+
+            // Generate cartesian product of pair choices
+            vector<vector<pair<int,int>>> flat_combinations;
+            vector<pair<int,int>> curr;
+            function<void(int)> dfs = [&](int idx){
+                if (idx == (int)pair_choices.size()){
+                    flat_combinations.push_back(curr);
+                    return;
+                }
+                for (auto& choice : pair_choices[idx]){
+                    curr.insert(curr.end(), choice.begin(), choice.end());
+                    dfs(idx+1);
+                    curr.resize(curr.size() - choice.size());
+                }
+            };
+            dfs(0);
+
+            cout << "  Generated " << flat_combinations.size() << " total flat pair combos.\n";
+
+            for (auto& pairs : flat_combinations) {
+                if (!valid_number_appearances(pairs))
+                    continue;
+
+                vector<pair<int,int>> chained_pairs;
+                if (!can_form_chain(pairs, chained_pairs))
+                    continue;
+
+                if (is_square_sum_chain(chained_pairs)) {
+                    cout << "  Found valid chain in solution " << i+1 << "!\n";
+                    cout << "    Pairs: ";
+                    for (auto& p : pairs)
+                        cout << "(" << p.first << "," << p.second << ") ";
+                    cout << "\n    Chain: ";
+                    for (auto& p : chained_pairs)
+                        cout << "(" << p.first << "," << p.second << ") ";
+                    cout << "\n";
+                    total_valid_chains++;
+                }
+            }
+        }
+
+        if (total_valid_chains == 0)
+            cout << "No valid chains found for target " << target << ".\n";
+
+        cout << "\n";
+    }
+
+    return 0;
+}
