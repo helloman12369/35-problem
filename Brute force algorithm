@@ -1,0 +1,225 @@
+// Brute forces the problem
+
+
+
+#include <iostream>
+#include <vector>
+#include <map>
+#include <set>
+#include <chrono>
+#include <iomanip>
+#include <algorithm>
+#include <functional>
+#include <numeric>
+
+
+using namespace std;
+
+const vector<int> square_values = {4, 9, 16, 25, 36, 49, 64};
+const map<int, int> max_counts = {{4, 1}, {9, 4}, {16, 7}, {25, 12}, {36, 17}, {49, 11}, {64, 3}};
+map<int, vector<pair<int, int>>> sigma;
+
+void build_sigma() {
+    for (int s : square_values) {
+        for (int a = 1; a < s; ++a) {
+            int b = s - a;
+            if (b > a && b <= 35 && a <= 35)
+                sigma[s].emplace_back(a, b);
+        }
+    }
+}
+
+void generate_solutions(int target, int idx, int current_sum, int count,
+                        const vector<int>& squares, const map<int, int>& max_counts,
+                        map<int, int>& current,
+                        vector<map<int, int>>& results) {
+    if (count > 34 || current_sum > target) return;
+    if (idx == (int)squares.size()) {
+        if (count == 34 && current_sum == target)
+            results.push_back(current);
+        return;
+    }
+
+    int square = squares[idx];
+    for (int c = 0; c <= max_counts.at(square); ++c) {
+        if (c > 0) current[square] = c;
+        generate_solutions(target, idx + 1, current_sum + c * square, count + c,
+                           squares, max_counts, current, results);
+        if (c > 0) current.erase(square);
+    }
+}
+
+bool valid_number_appearances(const vector<pair<int, int>>& pairs) {
+    map<int, int> freq;
+    for (auto& [a, b] : pairs) {
+        if (++freq[a] > 2 || ++freq[b] > 2)
+            return false;
+    }
+    return true;
+}
+
+bool can_form_chain(const vector<pair<int, int>>& pairs, vector<int>& final_seq) {
+    map<int, vector<int>> adj;
+    map<int, int> degree;
+
+    for (auto& [a, b] : pairs) {
+        adj[a].push_back(b);
+        adj[b].push_back(a);
+        degree[a]++;
+        degree[b]++;
+    }
+
+    int start = -1, endpts = 0;
+    for (auto& [node, deg] : degree) {
+        if (deg == 1) {
+            ++endpts;
+            start = node;
+        } else if (deg != 2) return false;
+    }
+
+    if (endpts != 2) return false;
+
+    set<int> visited;
+    vector<int> path;
+
+    function<bool(int)> dfs = [&](int u) {
+        visited.insert(u);
+        path.push_back(u);
+        for (int v : adj[u]) {
+            if (!visited.count(v)) {
+                if (dfs(v)) return true;
+            }
+        }
+        return visited.size() == pairs.size() + 1;
+    };
+
+    if (!dfs(start)) return false;
+
+    for (int i = 1; i < (int)path.size(); ++i) {
+        int s = path[i - 1] + path[i];
+        if (find(square_values.begin(), square_values.end(), s) == square_values.end())
+            return false;
+    }
+
+    final_seq = path;
+    return true;
+}
+
+bool try_pair_assignments(const map<int, int>& solution, vector<int>& final_seq) {
+    vector<pair<int, int>> pairs;
+    map<int, int> num_freq;
+
+    function<bool(map<int, int>::const_iterator)> backtrack = [&](map<int, int>::const_iterator it) -> bool {
+        if (it == solution.end()) {
+            if (!valid_number_appearances(pairs)) return false;
+            return can_form_chain(pairs, final_seq);
+        }
+
+        int sq = it->first;
+        int count = it->second;
+        const auto& pool = sigma[sq];
+        if ((int)pool.size() < count) return false;
+
+        vector<int> idx(pool.size());
+        iota(idx.begin(), idx.end(), 0);
+        vector<int> comb;
+
+        function<bool(int, int)> choose = [&](int pos, int left) -> bool {
+            if (left == 0) {
+                vector<pair<int, int>> added;
+                bool valid = true;
+                for (int i : comb) {
+                    auto [a, b] = pool[i];
+                    if (++num_freq[a] > 2 || ++num_freq[b] > 2) {
+                        valid = false;
+                        break;
+                    }
+                    pairs.emplace_back(a, b);
+                    added.emplace_back(a, b);
+                }
+
+                if (valid && backtrack(next(it))) return true;
+
+                for (auto& [a, b] : added) {
+                    pairs.pop_back();
+                    num_freq[a]--;
+                    num_freq[b]--;
+                }
+                return false;
+            }
+            for (int i = pos; i <= (int)pool.size() - left; ++i) {
+                comb.push_back(i);
+                if (choose(i + 1, left)) return true;
+                comb.pop_back();
+            }
+            return false;
+        };
+
+        return choose(0, count);
+    };
+
+    return backtrack(solution.begin());
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    build_sigma();
+    vector<int> squares = square_values;
+
+    const int start_target = 1191;
+    const int end_target = 1257;
+    int total_found = 0;
+
+    auto start_time = chrono::steady_clock::now();
+
+    for (int target = start_target; target <= end_target; ++target) {
+        vector<map<int, int>> solutions;
+        map<int, int> current;
+        generate_solutions(target, 0, 0, 0, squares, max_counts, current, solutions);
+
+        bool found = false;
+        for (const auto& sol : solutions) {
+            bool invalid = false;
+            int max_val = 0, max_count = 0;
+
+            for (const auto& [s, c] : sol) {
+                if (c > max_counts.at(s)) {
+                    invalid = true;
+                    break;
+                }
+                if (c > max_val) {
+                    max_val = c;
+                    max_count = 1;
+                } else if (c == max_val) {
+                    max_count++;
+                }
+            }
+            if (invalid || max_count > 2) continue;
+
+            vector<int> sequence;
+            if (try_pair_assignments(sol, sequence)) {
+                total_found++;
+                cout << "\nValid sequence for target " << target << ": ";
+                for (int x : sequence) cout << x << " ";
+                cout << "\n";
+                found = true;
+                break;
+            }
+        }
+
+        int processed = target - start_target + 1;
+        int total = end_target - start_target + 1;
+        double pct = 100.0 * processed / total;
+        auto now = chrono::steady_clock::now();
+        double elapsed = chrono::duration<double>(now - start_time).count();
+        double eta = (elapsed / processed) * (total - processed);
+
+        cout << fixed << setprecision(1);
+        cout << "\rProgress: " << pct << "%, ETA: " << eta << "s          " << flush;
+    }
+
+    cout << "\n\nTotal valid sequences found: " << total_found << "\n";
+    return 0;
+}
