@@ -1,0 +1,52 @@
+// The C++ code used to determine how many ways there are to write all the numbers from 1191 to 1257 as the sum of some combination of the squares from 2^2 to 8^2 using L(s) and limiting the number of squares can be at their maximum frequencies
+
+
+#include <iostream>
+#include <vector>
+
+using namespace std;
+
+const vector<int> squares = {4, 9, 16, 25, 36, 49, 64};
+const vector<int> max_counts = {1, 4, 7, 12, 17, 11, 3};
+const int NUM_SQUARES = 34;
+
+void dfs(int index, int countUsed, int currentSum, int targetSum, vector<int>& counts, int& ways) {
+    if (countUsed > NUM_SQUARES || currentSum > targetSum)
+        return;
+
+    if (index == squares.size()) {
+        if (countUsed == NUM_SQUARES && currentSum == targetSum) {
+            // Check how many square values hit their maximums
+            int maxUsed = 0;
+            for (int i = 0; i < counts.size(); ++i) {
+                if (counts[i] == max_counts[i])
+                    maxUsed++;
+            }
+            if (maxUsed <= 2)
+                ways++;
+        }
+        return;
+    }
+
+    for (int i = 0; i <= max_counts[index]; ++i) {
+        counts[index] = i;
+        dfs(index + 1, countUsed + i, currentSum + i * squares[index], targetSum, counts, ways);
+    }
+    counts[index] = 0; // backtrack
+}
+
+int main() {
+    int totalSum = 0;
+
+    for (int target = 1191; target <= 1257; ++target) {
+        int ways = 0;
+        vector<int> counts(squares.size(), 0);
+        dfs(0, 0, 0, target, counts, ways);
+        cout << target << ": "<< ways << " valid combinations" <<endl;
+        totalSum += ways;
+    }
+
+    cout << "Total sum of all ways from 1191 to 1257: " << totalSum << endl;
+
+    return 0;
+}
