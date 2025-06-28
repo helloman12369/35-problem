@@ -1,0 +1,78 @@
+// The C++ code used to determine how many ways there are to write all the numbers from 1191 to 1257 as the sum of some combination of the squares from 2^2 to 8^2 imposing L(s)
+
+
+#include <iostream>
+#include <vector>
+#include <numeric>
+#include <algorithm>
+using namespace std;
+
+const vector<int> squares    = {4, 9, 16, 25, 36, 49, 64};
+const vector<int> max_counts = {1, 4, 7, 12, 17, 11, 3};
+const int required_terms = 34;
+
+long long total_combinations = 0;
+
+void backtrack(int index,
+               int remaining_sum,
+               int remaining_count,
+               vector<int>& current_counts) {
+    if (remaining_sum < 0 || remaining_count < 0) return;
+
+    if (index == squares.size()) {
+        if (remaining_sum == 0 && remaining_count == 0) {
+            total_combinations++;
+        }
+        return;
+    }
+
+    for (int count = 0; count <= min(max_counts[index], remaining_count); ++count) {
+        current_counts[index] = count;
+        backtrack(index + 1,
+                  remaining_sum - count * squares[index],
+                  remaining_count - count,
+                  current_counts);
+        current_counts[index] = 0; // backtrack
+    }
+}
+
+int main() {
+    const int start = 1191;
+    const int end = 1257;
+
+    // Calculate max and min possible sum using the max_counts and limits
+    int min_possible_sum = 4 * required_terms;
+    int max_possible_sum = 0;
+    int max_total_terms = 0;
+
+    for (size_t i = 0; i < squares.size(); ++i) {
+        max_possible_sum += squares[i] * max_counts[i];
+        max_total_terms += max_counts[i];
+    }
+
+    if (required_terms > max_total_terms) {
+        cout << "Cannot use 34 squares within max usage constraints.\n";
+        return 0;
+    }
+
+    long long grand_total = 0;
+
+    cout << "Counting combinations from " << start << " to " << end << " (max usage constraints applied):\n\n";
+
+    for (int target = start; target <= end; ++target) {
+        if (target < min_possible_sum || target > max_possible_sum) {
+            cout << target << ": Out of range\n";
+            continue;
+        }
+
+        total_combinations = 0;
+        vector<int> current_counts(squares.size(), 0);
+        backtrack(0, target, required_terms, current_counts);
+
+        cout << target << ": " << total_combinations << " valid combination(s)\n";
+        grand_total += total_combinations;
+    }
+
+    cout << "\nTotal combinations across all values: " << grand_total << "\n";
+    return 0;
+}
